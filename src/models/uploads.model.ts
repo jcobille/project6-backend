@@ -11,19 +11,19 @@ export class Uploads extends Entity {
 
   @property({
     type: 'string',
-    required: true,
+    required: false,
   })
   userId: string;
 
   @property({
     type: 'string',
-    required: true,
+    required: false,
   })
   label: string;
 
   @property({
     type: 'string',
-    required: true,
+    required: false,
   })
   fileName: string;
 
@@ -31,7 +31,7 @@ export class Uploads extends Entity {
     type: 'array',
     itemType: 'string',
   })
-  sharedTo?: string[];
+  sharedTo: string;
 
 
   constructor(data?: Partial<Uploads>) {

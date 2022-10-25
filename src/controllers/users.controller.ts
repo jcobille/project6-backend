@@ -48,6 +48,86 @@ export class UsersController {
     const users = await this.usersRepository.find({fields: {password: false}});
     return {data: users, status: true, message: ''};
   }
+
+  @patch('/users')
+  @response(200, {
+    description: 'Users PATCH success count',
+    content: {'application/json': {schema: CountSchema}},
+  })
+  async updateAll(
+    @requestBody({
+      content: {
+        'application/json': {
+          schema: getModelSchemaRef(Users, {partial: true}),
+        },
+      },
+    })
+    users: Users,
+    @param.where(Users) where?: Where<Users>,
+  ): Promise<Count> {
+    return this.usersRepository.updateAll(users, where);
+  }
+
+  @get('/users/details/{id}')
+  @response(200, {
+    description: 'Users model instance',
+    content: {
+      'application/json': {
+        schema: getModelSchemaRef(Users, {includeRelations: true}),
+      },
+    },
+  })
+  async findById(
+    @param.path.string('id') id: string,
+    @param.filter(Users, {exclude: 'where'})
+    filter?: FilterExcludingWhere<Users>,
+  ): Promise<{}> {
+    const details = await this.usersRepository.findById(
+      id,
+      filter || {fields: {password: false}},
+    );
+    return {data: details, status: true, message: ''};
+  }
+
+  @patch('/users/edit/{id}')
+  @response(204, {
+    description: 'Users PATCH success',
+  })
+  async updateById(
+    @param.path.string('id') id: string,
+    @requestBody({
+      content: {
+        'application/json': {
+          schema: getModelSchemaRef(Users, {partial: true}),
+        },
+      },
+    })
+    users: Users,
+  ): Promise<{}> {
+    await this.usersRepository.updateById(id, users);
+    return {data: [], status: true, message: 'User updated!'};
+  }
+
+  @put('/users/{id}')
+  @response(204, {
+    description: 'Users PUT success',
+  })
+  async replaceById(
+    @param.path.string('id') id: string,
+    @requestBody() users: Users,
+  ): Promise<void> {
+    await this.usersRepository.replaceById(id, users);
+  }
+
+  @del('/users/{id}')
+  @response(204, {
+    description: 'Users DELETE success',
+  })
+  async deleteById(@param.path.string('id') id: string): Promise<{}> {
+    await this.usersRepository.deleteById(id);
+    return {data: [], status: true, message: 'User deleted'};
+  }
+
   @post('/users/login')
   @response(204, {
     description: 'User LOGIN instance',
@@ -96,7 +176,7 @@ export class UsersController {
 
     return {data: [], status: false, message: 'Invalid credentials'};
   }
-  
+
   @post('/users/create')
   @response(204, {
     description: 'User CREATE instance',
@@ -131,46 +211,5 @@ export class UsersController {
         message: 'Email already registered',
       };
     }
-  }
-
-  @put('/users/{id}')
-  @response(204, {
-    description: 'Users PUT success',
-  })
-  async replaceById(
-    @param.path.string('id') id: string,
-    @requestBody() users: Users,
-  ): Promise<void> {
-    await this.usersRepository.replaceById(id, users);
-  }
-
-  @del('/users/{id}')
-  @response(204, {
-    description: 'Users DELETE success',
-  })
-  async deleteById(@param.path.string('id') id: string): Promise<{}> {
-    await this.usersRepository.deleteById(id);
-    return {data: [], status: true, message: 'User deleted'};
-  }
-
-  @get('/users/details/{id}')
-  @response(200, {
-    description: 'Users model instance',
-    content: {
-      'application/json': {
-        schema: getModelSchemaRef(Users, {includeRelations: true}),
-      },
-    },
-  })
-  async findById(
-    @param.path.string('id') id: string,
-    @param.filter(Users, {exclude: 'where'})
-    filter?: FilterExcludingWhere<Users>,
-  ): Promise<{}> {
-    const details = await this.usersRepository.findById(
-      id,
-      filter || {fields: {password: false}},
-    );
-    return {data: details, status: true, message: ''};
   }
 }
