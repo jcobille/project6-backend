@@ -31,7 +31,7 @@ export class Uploads extends Entity {
     type: 'array',
     itemType: 'string',
   })
-  sharedTo: string;
+  sharedTo: string[];
 
 
   constructor(data?: Partial<Uploads>) {
