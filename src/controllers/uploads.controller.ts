@@ -1,24 +1,31 @@
-import {
-  Count,
-  CountSchema,
-  Filter,
-  FilterExcludingWhere,
-  repository,
-  Where,
-} from '@loopback/repository';
+import {inject} from '@loopback/core';
+import {FilterExcludingWhere, repository} from '@loopback/repository';
 import {
   post,
   param,
   get,
   getModelSchemaRef,
   patch,
-  put,
   del,
+  oas,
+  Request,
   requestBody,
   response,
+  RestBindings,
+  Response,
+  HttpErrors,
 } from '@loopback/rest';
+import {FILE_UPLOAD_SERVICE} from '../keys';
+import {STORAGE_DIRECTORY} from '../keys';
 import {Uploads} from '../models';
 import {UploadsRepository, UsersRepository} from '../repositories';
+import {FileUploadHandler} from '../types';
+import fs from 'fs';
+import path from 'path';
+
+export interface fileRequest extends Request {
+  fileRequest: any;
+}
 
 export class UploadsController {
   constructor(
@@ -27,6 +34,12 @@ export class UploadsController {
 
     @repository(UsersRepository)
     public usersRepository: UsersRepository,
+
+    @inject(FILE_UPLOAD_SERVICE)
+    private handler: FileUploadHandler,
+
+    // @inject(STORAGE_DIRECTORY)
+    // private storageDirectory: string,
   ) {}
 
   @get('/uploads/{id}')
@@ -52,25 +65,83 @@ export class UploadsController {
     return {data: uploadsList, status: true, message: ''};
   }
 
-  @post('/uploads')
+  @post('/uploads/create')
   @response(200, {
     description: 'Uploads model instance',
-    content: {'application/json': {schema: getModelSchemaRef(Uploads)}},
+    content: {'application/json': {schema: {type: 'object'}}},
   })
   async create(
-    @requestBody({
-      content: {
-        'application/json': {
-          schema: getModelSchemaRef(Uploads, {
-            title: 'NewUploads',
-            exclude: ['id'],
-          }),
-        },
-      },
-    })
-    uploads: Omit<Uploads, 'id'>,
-  ): Promise<Uploads> {
-    return this.uploadsRepository.create(uploads);
+    @requestBody.file()
+    request: Request,
+    @inject(RestBindings.Http.RESPONSE) response: Response,
+  ): Promise<object> {
+    return new Promise<object>((resolve, reject) => {
+      this.handler(request, response, async (err: unknown) => {
+        if (err) reject({data: [], status: false, message: err});
+        else {
+          let res = await UploadsController.getFilesAndFields(request);
+          let fileName = res.fields.fileName;
+
+          let body = {
+            userId: res.fields.userId,
+            label: res.fields.label,
+            fileName: fileName,
+            sharedTo: [],
+          };
+
+          let createUpload = await this.uploadsRepository.create(body);
+          resolve({
+            data: createUpload,
+            status: true,
+            message: 'Successfully uploaded!',
+          });
+        }
+      });
+    });
+  }
+
+  private static async getFilesAndFields(request: Request) {
+    const uploadedFiles = request.files;
+    const mapper = (f: globalThis.Express.Multer.File) => ({
+      fieldname: f.fieldname,
+      originalname: f.originalname,
+      encoding: f.encoding,
+      mimetype: f.mimetype,
+      size: f.size,
+    });
+
+    let files: object[] = [];
+    if (Array.isArray(uploadedFiles)) {
+      files = uploadedFiles.map(mapper);
+    } else {
+      for (const filename in uploadedFiles) {
+        files.push(...uploadedFiles[filename].map(mapper));
+      }
+    }
+
+    return {files, fields: request.body};
+  }
+
+  @get('/uploads/download/{filename}')
+  @oas.response.file()
+  downloadFile(
+    @param.path.string('filename') fileName: string,
+    @inject(RestBindings.Http.RESPONSE) response: Response,
+  ) {
+    const file = this.validateFileName(fileName);
+    // response.download(file, fileName);
+    return response;
+  }
+
+  /**
+   * Validate file names to prevent them goes beyond the designated directory
+   * @param fileName - File name
+   */
+  private validateFileName(fileName: string) {
+    // const resolved = path.resolve(this.storageDirectory, fileName);
+    // if (resolved.startsWith(this.storageDirectory)) return resolved;
+    // The resolved file is outside sandbox
+    throw new HttpErrors.BadRequest(`Invalid file name: ${fileName}`);
   }
 
   @patch('/uploads/update/{id}')
@@ -82,7 +153,7 @@ export class UploadsController {
     @requestBody() upload: Uploads,
   ): Promise<{}> {
     await this.uploadsRepository.updateById(id, upload);
-    return {data: [], status: true, message: 'Upload has been updated!'};
+    return {data: upload, status: true, message: 'Upload has been updated!'};
   }
 
   @del('/uploads/delete/{id}')
@@ -90,8 +161,20 @@ export class UploadsController {
     description: 'Uploads DELETE success',
   })
   async deleteById(@param.path.string('id') id: string): Promise<{}> {
+    let upload = await this.uploadsRepository.findOne({
+      where: {id: id},
+    });
+
+    if (fs.existsSync(`./public/uploads/${upload?.fileName}`)) {
+      fs.unlinkSync(`./public/uploads/${upload?.fileName}`);
+    }
+
     await this.uploadsRepository.deleteById(id);
-    return {data: [], status: true, message: 'Upload has been deleted!'};
+    return {
+      data: [],
+      status: true,
+      message: 'Upload has been deleted!',
+    };
   }
 
   @get('/uploads/details/{id}')
@@ -103,13 +186,10 @@ export class UploadsController {
       },
     },
   })
-  async findById(
-    @param.path.string('id') id: string,
-  ): Promise<{}> {
+  async findById(@param.path.string('id') id: string): Promise<{}> {
     const uploads = await this.uploadsRepository.find({
       where: {userId: id},
     });
-    // this.uploadsRepository.findById(id, filter);
     return {data: uploads, status: true, message: ''};
   }
 
@@ -125,7 +205,7 @@ export class UploadsController {
       },
     },
   })
-  async getSharedList(@param.path.string('id') id: string): Promise<{}> {
+  async getSharedList(@param.path.string('id') id: string[]): Promise<{}> {
     const sharedUploadsList = await this.uploadsRepository.find({
       where: {sharedTo: {inq: [id]}},
     });

@@ -7,7 +7,9 @@ import {
 import {RepositoryMixin} from '@loopback/repository';
 import {RestApplication} from '@loopback/rest';
 import {ServiceMixin} from '@loopback/service-proxy';
+import multer from 'multer';
 import path from 'path';
+import {FILE_UPLOAD_SERVICE, STORAGE_DIRECTORY} from './keys';
 import {MySequence} from './sequence';
 
 export {ApplicationConfig};
@@ -40,5 +42,19 @@ export class BackendApplication extends BootMixin(
         nested: true,
       },
     };
+  }
+
+  protected configureFileUpload(destination?: string) {
+    destination = destination ?? path.join(__dirname, '../.sandbox');
+    this.bind(STORAGE_DIRECTORY).to(destination);
+    const multerOptions: multer.Options = {
+      storage: multer.diskStorage({
+        destination,
+        filename: (req, file, cb) => {
+          cb(null, file.originalname);
+        },
+      }),
+    };
+    this.configure(FILE_UPLOAD_SERVICE).to(multerOptions);
   }
 }
